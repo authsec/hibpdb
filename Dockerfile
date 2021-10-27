@@ -14,7 +14,7 @@ RUN apt-get update && \
     curl -O "${PWNED_DB_BASE_URL}/${PWNED_DB_FILENAME}" 
 RUN 7z x ${PWNED_DB_FILENAME}
 
-FROM mongo:${MONGODB_VERSION}
+FROM builder
 LABEL maintainer="Jens Frey <authsec@coffeecrew.org>" Version="2021-10-26"
 
 WORKDIR /tmp
