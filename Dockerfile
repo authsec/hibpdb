@@ -1,7 +1,7 @@
 ARG MONGODB_VERSION=5.0.3
 
 FROM mongo:${MONGODB_VERSION} as builder
-LABEL maintainer="Jens Frey <authsec@coffeecrew.org>" Version="2021-10-31"
+LABEL maintainer="Jens Frey <authsec@coffeecrew.org>" Version="2021-11-03"
 
 ARG PWNED_DB_BASE_URL="https://downloads.pwnedpasswords.com/passwords"
 ARG PWNED_DB_FILENAME="pwned-passwords-sha1-ordered-by-count-v7.7z"
@@ -22,21 +22,19 @@ WORKDIR /tmp
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get -y install --no-install-recommends curl p7zip-full time parallel && \
     curl -Ok "${PWNED_DB_BASE_URL}/${PWNED_DB_FILENAME}" && \
-    7za x -so ${PWNED_DB_FILENAME} | sed 's/:/,/g' > ${PWNED_DB_FILENAME%.7z}.txt && \
+    7za x ${PWNED_DB_FILENAME} && \
     NO_LINES_TOTAL=$(wc -l ${PWNED_DB_FILENAME%.7z}.txt | cut -d' ' -f1) && \
     NO_CPUS=$(lscpu | grep '^CPU(s):' | tr -s ' ' | cut -d' ' -f2) && \
     NO_LINES_PER_FILE=$((NO_LINES_TOTAL/NO_CPUS + 1)) && \
     split -l ${BATCH_SIZE} ${PWNED_DB_FILENAME%.7z}.txt pwds- && \
-    rm -f ${PWNED_DB_FILENAME} ${PWNED_DB_FILENAME%.7z}.txt
-    
-FROM builder
-
-WORKDIR /tmp
-RUN mkdir -p "${DB_PATH}" && \
+    rm -f ${PWNED_DB_FILENAME} ${PWNED_DB_FILENAME%.7z}.txt && \
+     mkdir -p "${DB_PATH}" && \
     ulimit -a && \
     mongod --fork --syslog --journalCommitInterval 500 --syncdelay 120 --dbpath "${DB_PATH}" && \
-    ls pwds-* | time parallel -j+0 --eta "mongoimport --uri 'mongodb://localhost:27017/hibp' --bypassDocumentValidation --batchSize=${BATCH_SIZE} --mode delete --fields '_id.binary(base64),c.int32()' --columnsHaveTypes --db hibp --collection pwndpwds --type csv --file {}" && \
-    mongod --shutdown --dbpath /data/hibp && \
+    ls pwds-* | time parallel -j+0 --eta "cat {} | sed 's/:/,/g' | mongoimport --uri 'mongodb://localhost:27017/hibp' --bypassDocumentValidation --batchSize=${BATCH_SIZE} --fields '_id.binary(base64),c.int32()' --columnsHaveTypes --db hibp --collection pwndpwds --type csv" && \
+    echo "show dbs" | mongosh && \
+    mongod --shutdown --dbpath "${DB_PATH}" && \
+    chown -R mongodb:mongodb ${DB_PATH} && \
     rm -f pwds-* && \
     apt-get purge -y curl p7zip-full && \
     apt-get autoremove -y && \
@@ -48,4 +46,7 @@ RUN mkdir -p "${DB_PATH}" && \
     rm -f /var/log/alternatives.log /var/log/apt/* && \
     rm -f /var/cache/debconf/*-old
 
-CMD ["sh", "-c", "mongod --journalCommitInterval 500 --syncdelay 120 --dbpath ${DB_PATH}"]
+# Persist the new data
+VOLUME /data/hibp
+ 
+CMD ["sh", "-c", "mongod --dbpath ${DB_PATH}"]
