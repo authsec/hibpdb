@@ -36,7 +36,7 @@ RUN apt-get update && \
     mongod --shutdown --dbpath "${DB_PATH}" && \
     chown -R mongodb:mongodb ${DB_PATH} && \
     rm -f pwds-* && \
-    apt-get purge -y curl p7zip-full && \
+    apt-get purge -y curl p7zip-full parallel && \
     apt-get autoremove -y && \
     apt-get clean && \
     find /var/lib/apt/lists -type f | xargs rm && \
